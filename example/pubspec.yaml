@@ -1,0 +1,33 @@
+name: wallet_cloud_backup_example
+description: Demo app and on-device tests for wallet_cloud_backup.
+publish_to: none
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.12.0
+  flutter: ">=3.44.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  wallet_cloud_backup:
+    path: ../
+  wallet_core:
+    git:
+      url: https://github.com/grantsamuel72-cmd/wallet-core-flutter.git
+      ref: d93b9da594cc8ce4049dd687e03620727c88c149
+
+dev_dependencies:
+  flutter_lints: ^6.0.0
+  flutter_test:
+    sdk: flutter
+  integration_test:
+    sdk: flutter
+  wallet_core_platform_interface:
+    git:
+      url: https://github.com/grantsamuel72-cmd/wallet-core-flutter.git
+      ref: d93b9da594cc8ce4049dd687e03620727c88c149
+      path: packages/wallet_core_platform_interface
+
+flutter:
+  uses-material-design: true

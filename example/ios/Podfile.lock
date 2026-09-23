@@ -1,0 +1,38 @@
+PODS:
+  - Flutter (1.0.0)
+  - TrustWalletCore (4.8.1):
+    - TrustWalletCore/Core (= 4.8.1)
+  - TrustWalletCore/Core (4.8.1):
+    - TrustWalletCore/Types
+  - TrustWalletCore/Types (4.8.1):
+    - WalletCoreSwiftProtobuf
+  - wallet_core_darwin (0.1.0):
+    - Flutter
+    - FlutterMacOS
+    - TrustWalletCore (= 4.8.1)
+  - WalletCoreSwiftProtobuf (1.29.0)
+
+DEPENDENCIES:
+  - Flutter (from `Flutter`)
+  - wallet_core_darwin (from `.symlinks/plugins/wallet_core_darwin/darwin`)
+
+SPEC REPOS:
+  trunk:
+    - TrustWalletCore
+    - WalletCoreSwiftProtobuf
+
+EXTERNAL SOURCES:
+  Flutter:
+    :path: Flutter
+  wallet_core_darwin:
+    :path: ".symlinks/plugins/wallet_core_darwin/darwin"
+
+SPEC CHECKSUMS:
+  Flutter: cabc95a1d2626b1b06e7179b784ebcf0c0cde467
+  TrustWalletCore: eb2807824c3ed5890bbc581f230c00f50ab05513
+  wallet_core_darwin: b8c3adfb6b26ec4de742bd5c42e8d573ab28554f
+  WalletCoreSwiftProtobuf: a4798576a2d309511fc45f81843d348732ec571d
+
+PODFILE CHECKSUM: 251cb053df7158f337c0712f2ab29f4e0fa474ce
+
+COCOAPODS: 1.17.0
