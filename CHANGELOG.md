@@ -22,12 +22,12 @@ Fixes:
   created a file with the same name, so a wallet keeps a single backup and no older ciphertext
   outlives a password change.
 - `list()` returns the same order on both backends: Google Drive sorts locally as well as asking the
-  server to, and iCloud reads attributes off the file system for files the Spotlight index has not
+  server to (picking between same-named copies still follows the server's order), and iCloud reads attributes off the file system for files the Spotlight index has not
   indexed yet, so this device's own fresh writes are no longer sorted last without a date or size.
 - Concurrent Google Drive operations share one authorization instead of each requesting a token.
 - `MnemonicCloudBackup.listRestorable` reads up to four wallets at a time instead of one after
-  another, and keeps the order. It no longer costs a round trip (Drive) or a sync timeout (iCloud)
-  per wallet.
+  another, and keeps the order, so a restore screen waits for a quarter as many round trips (Drive)
+  or sync timeouts (iCloud) as it has wallets.
 - `ICloudBackupStore.read` queries iCloud metadata once per call instead of once per retry; repeating
   it only re-answered a question already answered and ate into `syncTimeout`.
 - `ICloudBackupStore.write` runs its metadata lookup through the same guard as every other call, so
@@ -45,6 +45,17 @@ Tests:
   size, and the Argon2id wipe check, which compared two buffers that would both have been wiped.
 
 Docs:
+
+- Said what the conflict methods actually do on Android: `listConflicts` returns an empty list,
+  `resolveConflicts` does nothing, and `readConflictVersion` throws `UnsupportedError`. The README
+  and two of the three dartdocs had flattened this into "empty list or nothing".
+- `CloudBackupStore.write` and `read` document what happens when a provider holds two files of the
+  same name, which the 0.3.1 cleanup made part of the contract.
+- The example turns off `autocorrect`, `enableSuggestions` and `enableIMEPersonalizedLearning` on
+  its mnemonic field, and the README says why: all three default to on, so a real phrase typed into
+  a wallet app reaches the keyboard's learned vocabulary.
+- The example's iCloud container constant matches its entitlements, so turning demo mode off can
+  actually connect.
 
 - `CloudBackupStore` and `WalletCloudBackupException` documented that caller mistakes keep their
   usual types, matching what the README already said.

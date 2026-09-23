@@ -151,6 +151,7 @@ class WalletCloudBackup {
   /// Reads and verifies one unresolved version returned by [listConflicts].
   ///
   /// To keep that version, pass it to [backup] before [resolveConflicts].
+  /// Throws [UnsupportedError] on Android, where Drive keeps a single version.
   Future<WalletBackup> readConflictVersion(String walletId, String versionId) async {
     final store = this.store;
     if (store is! ConflictAwareBackupStore) {

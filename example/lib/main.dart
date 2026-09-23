@@ -3,8 +3,9 @@ import 'package:wallet_cloud_backup/wallet_cloud_backup.dart';
 import 'package:wallet_cloud_backup_example/memory_backup_store.dart';
 import 'package:wallet_core/wallet_core.dart';
 
-/// Replace with your own iCloud container before turning off demo mode.
-const _iCloudContainerId = 'iCloud.com.example.walletcloudbackup';
+/// Must match `com.apple.developer.ubiquity-container-identifiers` in
+/// ios/Runner/Runner.entitlements; replace both with your own container.
+const _iCloudContainerId = 'iCloud.com.uux.dev';
 
 /// Public BIP39 test vector. Never put funds on it.
 const _demoMnemonic =
@@ -139,6 +140,12 @@ class _BackupDemoPageState extends State<BackupDemoPage> {
             TextField(
               controller: _mnemonic,
               maxLines: 2,
+              // A real phrase typed here would otherwise reach the keyboard's
+              // learned vocabulary and its suggestion bar. All three default
+              // to on, so a wallet app has to turn them off explicitly.
+              autocorrect: false,
+              enableSuggestions: false,
+              enableIMEPersonalizedLearning: false,
               decoration: const InputDecoration(labelText: '助记词（示例为公开测试向量）'),
             ),
             TextField(

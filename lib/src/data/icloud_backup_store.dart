@@ -352,6 +352,8 @@ class ICloudBackupStore implements ConflictAwareBackupStore {
     final path = _path(fileName);
     // A monotonic clock: the retry delay and the timeouts below use one too,
     // and a clock correction mid-wait must not stretch or cut this window.
+    // No test covers this, since stepping the clock would need an injected
+    // time source; it is identical to DateTime.now() when the clock is steady.
     final elapsed = Stopwatch()..start();
     var waited = false;
     while (true) {

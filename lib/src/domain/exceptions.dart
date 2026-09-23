@@ -1,10 +1,10 @@
 /// Base exception for package-level backup failures.
 ///
-/// Every *runtime* failure of this package's public API is a subclass, so
-/// callers can catch this single type. Caller mistakes keep their usual types,
-/// for example [ArgumentError] for an invalid argument. [LocalBackupCache] is
-/// outside this guarantee: it passes secure-storage errors through unchanged.
-/// Provider-specific errors are kept in [cause].
+/// Every runtime failure of this package's public API is this type or a
+/// subclass, so callers can catch this single type. Caller mistakes keep their
+/// usual types, for example [ArgumentError] for an invalid argument.
+/// [LocalBackupCache] is outside this guarantee: it passes secure-storage
+/// errors through unchanged. Provider-specific errors are kept in [cause].
 class WalletCloudBackupException implements Exception {
   /// Creates a backup exception with an optional underlying [cause].
   const WalletCloudBackupException(this.message, {this.cause});

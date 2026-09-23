@@ -150,6 +150,9 @@ for (final entry in await backups.listRestorable()) {
   `BackupIntegrityException`。能改写云端文件的人也可以通过改 KDF 参数制造"密码错误"，但拿不到内容。
 - **密码是唯一防线**：云盘账号被盗时，攻击者可以离线暴力破解。插件只强制最短长度（默认 8，不能
   设得更低），请在 UI 里加强度提示。忘记密码无法恢复。
+- **助记词输入框要关掉键盘学习**：`autocorrect`、`enableSuggestions`、
+  `enableIMEPersonalizedLearning` 三个开关默认全开，用户手敲的真实助记词会进入系统输入法的
+  学习词库和候选栏。`example/lib/main.dart` 演示了正确写法。
 - **BIP39 passphrase（第 25 个词）不会备份**，恢复时通过 `restoreWallet(bip39Passphrase: ...)` 传入。
 - **密码不做 Unicode 规范化**，按输入的 UTF-8 字节原样使用。同一平台的键盘输入基本都是 NFC，
   但如果允许粘贴或跨系统输入带重音的字符，请在 App 里统一规范化后再传入。
@@ -220,7 +223,8 @@ Google 账号的"第三方应用访问权限"里移除。目前也不支持在 A
 
 ## iCloud 冲突（仅 iOS）
 
-两台设备离线时各自备份同一个钱包，iCloud 会保留多个版本。Android 上以下方法返回空列表或什么都不做。
+两台设备离线时各自备份同一个钱包，iCloud 会保留多个版本。Android 上 `listConflicts` 返回空列表、
+`resolveConflicts` 什么都不做，`readConflictVersion` 抛 `UnsupportedError`。
 
 ```dart
 final versions = await cloud.listConflicts(walletId);
@@ -241,9 +245,13 @@ await cloud.resolveConflicts(
 
 ## 错误处理
 
-运行时错误都继承自 `WalletCloudBackupException`，原始异常在 `cause` 字段里；异常信息里不会出现
-助记词或密码。调用方的编程错误保持原类型：传入已 `dispose` 的 `HDWallet` 抛 `StateError`，
-Wallet Core 拒绝的 BIP39 passphrase（如含 NUL）抛 `ArgumentError`。
+运行时错误都是 `WalletCloudBackupException` 或其子类，原始异常在 `cause` 字段里；异常信息里不会
+出现助记词或密码。`LocalBackupCache` 是例外：它直接透传 `flutter_secure_storage` 的
+`PlatformException`，不做包装。
+
+调用方的编程错误保持原类型：传入已 `dispose` 的 `HDWallet` 抛 `StateError`，Wallet Core 拒绝的
+BIP39 passphrase（如含 NUL）抛 `ArgumentError`，不是纯文件名的 `fileName`（直接使用
+`ICloudBackupStore` / `GoogleDriveBackupStore` 时）也抛 `ArgumentError`。
 
 | 异常 | 含义 |
 | --- | --- |

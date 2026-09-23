@@ -26,9 +26,14 @@ abstract interface class CloudBackupStore {
   Future<void> disconnect();
 
   /// Creates or replaces a backup named [fileName].
+  ///
+  /// A provider that lets two files share a name keeps the newest and removes
+  /// the rest, so one wallet ends up with one backup again.
   Future<CloudBackupFile> write(String fileName, Uint8List contents);
 
   /// Reads a complete backup named [fileName].
+  ///
+  /// Reads the newest one when the provider holds several of that name.
   Future<Uint8List> read(String fileName);
 
   /// Lists all files visible to this application, newest first.

@@ -117,7 +117,7 @@ void main() {
       );
     });
 
-    test('treats conflicts as absent on stores without versions', () async {
+    test('answers conflict queries per method on stores without versions', () async {
       expect(await cloud.listConflicts('wallet-1'), isEmpty);
       await cloud.resolveConflicts('wallet-1', reviewedVersionIds: <String>{});
       await expectLater(cloud.readConflictVersion('wallet-1', 'v1'), throwsUnsupportedError);
