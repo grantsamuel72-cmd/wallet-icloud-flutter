@@ -104,6 +104,23 @@ void main() {
     await _waitFor(tester, find.text('恢复成功，ETH 地址：0xFAKE'));
   });
 
+  testWidgets('shows what is actually in the container', (tester) async {
+    await tester.pumpWidget(_app());
+    await tester.enterText(_field('备份密码（至少 8 个字符）'), 'correct horse battery');
+    await tester.tap(find.text('备份'));
+    await _waitFor(tester, find.text('已加密并上传，已回读校验。'));
+
+    await tester.tap(find.text('诊断'));
+    await _waitFor(tester, find.text('容器里有 1 个文件。'));
+
+    expect(find.text('连接状态：可用'), findsOneWidget);
+    expect(
+      find.text('wallet-64656d6f2d77616c6c6574.json'),
+      findsOneWidget,
+      reason: 'the real file name, so a hidden backup can still be verified',
+    );
+  });
+
   testWidgets('tells the user when the password is wrong', (tester) async {
     await tester.pumpWidget(_app());
     await tester.enterText(_field('备份密码（至少 8 个字符）'), 'correct horse battery');

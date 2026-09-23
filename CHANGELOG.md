@@ -55,7 +55,10 @@ Docs:
   its mnemonic field, and the README says why: all three default to on, so a real phrase typed into
   a wallet app reaches the keyboard's learned vocabulary.
 - The example's iCloud container constant matches its entitlements, so turning demo mode off can
-  actually connect.
+  actually connect, and a "诊断" button lists what is really in the container — a backup stored
+  outside `Documents/` is invisible to the Files app by design, which reads like a failure.
+- The README says where the backup file lives, why nothing shows up in the Files app or on
+  iCloud.com, and four ways to confirm it is there.
 
 - `CloudBackupStore` and `WalletCloudBackupException` documented that caller mistakes keep their
   usual types, matching what the README already said.

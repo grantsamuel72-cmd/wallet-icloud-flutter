@@ -7,6 +7,10 @@ import 'package:wallet_core/wallet_core.dart';
 /// ios/Runner/Runner.entitlements; replace both with your own container.
 const _iCloudContainerId = 'iCloud.com.uux.dev';
 
+/// Container-relative folder. Without a `Documents/` prefix the Files app does
+/// not show it, so the user cannot delete their only backup by hand.
+const _iCloudFolder = 'WalletBackups';
+
 /// Public BIP39 test vector. Never put funds on it.
 const _demoMnemonic =
     'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
@@ -38,13 +42,19 @@ class _BackupDemoPageState extends State<BackupDemoPage> {
   bool _busy = false;
   String _status = '演示模式：备份只保存在内存里。';
   List<RestorableWallet> _wallets = const <RestorableWallet>[];
+  List<CloudBackupFile> _containerFiles = const <CloudBackupFile>[];
+  bool _diagnosed = false;
+  bool _providerReady = false;
   late MnemonicCloudBackup _backups = _createBackups();
 
   MnemonicCloudBackup _createBackups() => widget.createBackups(
     _demoMode
         ? WalletCloudBackup.withStore(MemoryBackupStore())
         : WalletCloudBackup(
-            iCloud: const ICloudOptions(containerId: _iCloudContainerId),
+            iCloud: const ICloudOptions(
+              containerId: _iCloudContainerId,
+              folder: _iCloudFolder,
+            ),
           ),
   );
 
@@ -97,6 +107,18 @@ class _BackupDemoPageState extends State<BackupDemoPage> {
     return '找到 ${_wallets.length} 个备份。';
   });
 
+  /// Reads the backend directly, so the listing is what is really in the
+  /// container rather than what the package recognises as a wallet backup.
+  Future<void> _diagnose() => _run('诊断', () async {
+    final store = _backups.cloud.store;
+    _providerReady = await store.connect();
+    _containerFiles = await store.list();
+    _diagnosed = true;
+    return _containerFiles.isEmpty
+        ? '容器里还没有文件。'
+        : '容器里有 ${_containerFiles.length} 个文件。';
+  });
+
   Future<void> _restore(String walletId) => _run('恢复', () async {
     final wallet = await _backups.restoreWallet(
       walletId,
@@ -109,6 +131,16 @@ class _BackupDemoPageState extends State<BackupDemoPage> {
       await wallet.dispose();
     }
   });
+
+  static String _describeFile(CloudBackupFile file) {
+    final size = file.sizeInBytes;
+    final changedAt = file.modifiedAt ?? file.createdAt;
+    return <String>[
+      size == null ? '大小未知' : '$size 字节',
+      changedAt == null ? '时间未知' : '${changedAt.toLocal()}',
+      if (file.hasUnresolvedConflicts) '有未解决的冲突',
+    ].join(' · ');
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -126,6 +158,8 @@ class _BackupDemoPageState extends State<BackupDemoPage> {
               onChanged: (value) => setState(() {
                 _demoMode = value;
                 _wallets = const <RestorableWallet>[];
+                _containerFiles = const <CloudBackupFile>[];
+                _diagnosed = false;
                 _backups = _createBackups();
               }),
             ),
@@ -161,11 +195,32 @@ class _BackupDemoPageState extends State<BackupDemoPage> {
                   FilledButton(onPressed: _connect, child: const Text('连接云盘')),
                 FilledButton(onPressed: _backup, child: const Text('备份')),
                 OutlinedButton(onPressed: _list, child: const Text('列出备份')),
+                OutlinedButton(onPressed: _diagnose, child: const Text('诊断')),
               ],
             ),
             const SizedBox(height: 16),
             if (_busy) const LinearProgressIndicator(),
             Text(_status),
+            if (_diagnosed) ...<Widget>[
+              const Divider(height: 32),
+              Text('存储位置', style: Theme.of(context).textTheme.titleSmall),
+              Text(
+                _demoMode
+                    ? '内存存储，什么都没有写到云端。'
+                    : '后端：${_backups.cloud.provider.name}\n'
+                          '容器：$_iCloudContainerId\n'
+                          '目录：$_iCloudFolder/（Files App 和 iCloud.com 都看不到，这是有意的）',
+              ),
+              Text(_providerReady ? '连接状态：可用' : '连接状态：不可用（未登录 iCloud，或云盘已关闭）'),
+              const SizedBox(height: 8),
+              for (final file in _containerFiles)
+                ListTile(
+                  dense: true,
+                  title: Text(file.name),
+                  subtitle: Text(_describeFile(file)),
+                ),
+              const Divider(height: 32),
+            ],
             for (final wallet in _wallets)
               ListTile(
                 title: Text(wallet.label ?? wallet.walletId),

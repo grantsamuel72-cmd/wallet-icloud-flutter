@@ -212,6 +212,27 @@ Google 账号的"第三方应用访问权限"里移除。目前也不支持在 A
 单次云端调用默认 60 秒超时（`GoogleDriveBackupStore.requestTimeout` /
 `ICloudBackupStore.operationTimeout`），超时抛 `CloudStorageException`，避免离线时一直卡住。
 
+### 备份文件在哪里，为什么看不见
+
+iOS 上文件写在 `<ubiquity container>/WalletBackups/wallet-<hex>.json`。默认的 `folder` 没有
+`Documents/` 前缀，所以 **Files App、iCloud.com 网页、"iCloud 云盘"列表里都不会显示它**——这是
+有意的：能在 Files App 里看到，就能在 Files App 里删掉，而这个文件往往是用户恢复钱包的唯一途径。
+
+确认备份确实存在，有四种办法：
+
+1. `backupMnemonic` 返回即证明。它上传后会完整读回一次并比对 checksum，不一致就抛
+   `CloudStorageException`。
+2. `cloud.store.list()` 直接列出容器里的文件（名称、字节数、修改时间）。`example/` 的"诊断"
+   按钮演示了这个用法。
+3. Mac 上用同一个 Apple ID 登录后直接看：
+   `~/Library/Mobile Documents/iCloud~com~example~wallet/WalletBackups/`
+   （容器 id 里的 `.` 要换成 `~`）。
+4. iPhone 设置 → Apple ID → iCloud → 管理账户存储，能看到这个 App 占用的空间。
+
+真想让用户在 Files App 里看到，需要同时做两件事：`folder` 改成 `Documents/...`，并在 App 的
+`Info.plist` 里加 `NSUbiquitousContainers` 且 `NSUbiquitousContainerIsDocumentScopePublic`
+为 `true`。少任何一个都不会显示。
+
 ## 新设备上的 iCloud 同步
 
 新设备首次启动时，iCloud 可能还没把备份目录同步下来：
