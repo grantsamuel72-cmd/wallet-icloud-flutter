@@ -3,6 +3,7 @@ import 'dart:math';
 
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:wallet_cloud_backup/src/crypto/mnemonic_sealer.dart';
 import 'package:wallet_cloud_backup/wallet_cloud_backup.dart';
 import 'package:wallet_core/wallet_core.dart';
 
@@ -42,6 +43,44 @@ void main() {
     expect(file.walletId, 'wallet-1');
     expect(await backups.restoreMnemonic('wallet-1', password: _password), mnemonic12);
     expect(platform.wallets, isEmpty, reason: 'temporary wallets are disposed');
+  });
+
+  test('encrypts the current TRON address and validates it on restore', () async {
+    final address = await backups.tronAddressForMnemonic(mnemonic12);
+    await backups.backupMnemonic(
+      walletId: 'wallet-1',
+      mnemonic: mnemonic12,
+      password: _password,
+      tronAddress: address,
+    );
+
+    expect(utf8.decode(store.files.values.single), isNot(contains(address)));
+    final sealed = await backups.cloud.restore('wallet-1');
+    final contents = await MnemonicSealer(
+      kdf: _cheap,
+      minimumKdf: _cheap,
+    ).open(sealed, password: _password);
+    expect(contents.tronAddress, address);
+    expect(await backups.restoreMnemonic('wallet-1', password: _password), mnemonic12);
+
+    platform.tronAddressSalt = 'different TRON derivation';
+    await expectLater(
+      backups.restoreMnemonic('wallet-1', password: _password),
+      throwsA(isA<BackupIntegrityException>()),
+    );
+  });
+
+  test('rejects a TRON address from another mnemonic before upload', () async {
+    await expectLater(
+      backups.backupMnemonic(
+        walletId: 'wallet-1',
+        mnemonic: mnemonic12,
+        password: _password,
+        tronAddress: 'TWRONGADDRESS',
+      ),
+      throwsA(isA<BackupIntegrityException>()),
+    );
+    expect(store.writes, 0);
   });
 
   test('uploads nothing that reveals the wallet', () async {
@@ -170,12 +209,14 @@ void main() {
     expect(store.peakConcurrentReads, lessThanOrEqualTo(4));
   });
 
-  test('changes the password and keeps the label', () async {
+  test('changes the password and keeps the label and TRON address', () async {
+    final address = await backups.tronAddressForMnemonic(mnemonic12);
     await backups.backupMnemonic(
       walletId: 'wallet-1',
       mnemonic: mnemonic12,
       password: _password,
       label: 'Main',
+      tronAddress: address,
     );
 
     await backups.changePassword(
@@ -187,6 +228,12 @@ void main() {
     expect(await backups.verifyPassword('wallet-1', password: _password), isFalse);
     expect(await backups.restoreMnemonic('wallet-1', password: 'a brand new password'), mnemonic12);
     expect((await backups.listRestorable()).single.label, 'Main');
+    final sealed = await backups.cloud.restore('wallet-1');
+    final contents = await MnemonicSealer(
+      kdf: _cheap,
+      minimumKdf: _cheap,
+    ).open(sealed, password: 'a brand new password');
+    expect(contents.tronAddress, address);
   });
 
   test('writes nothing when the current password is wrong', () async {

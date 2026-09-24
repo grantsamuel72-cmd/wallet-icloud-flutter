@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:wallet_cloud_backup/wallet_cloud_backup.dart';
 import 'package:wallet_cloud_backup_example/memory_backup_store.dart';
+import 'package:wallet_cloud_backup_example/wallet_generation_controls.dart';
+import 'package:wallet_cloud_backup_example/wallet_generation_service.dart';
 import 'package:wallet_core/wallet_core.dart';
 
 /// Must match `com.apple.developer.ubiquity-container-identifiers` in
@@ -22,11 +25,18 @@ MnemonicCloudBackup _defaultBackups(WalletCloudBackup cloud) =>
     MnemonicCloudBackup(cloud);
 
 class BackupDemoPage extends StatefulWidget {
-  const BackupDemoPage({super.key, this.createBackups = _defaultBackups});
+  const BackupDemoPage({
+    super.key,
+    this.createBackups = _defaultBackups,
+    this.walletGenerator,
+  });
 
   /// Builds the mnemonic backup service on top of a storage backend.
   /// Tests pass one with a fake Wallet Core.
   final MnemonicCloudBackup Function(WalletCloudBackup cloud) createBackups;
+
+  /// Generator used by both create and regenerate actions.
+  final WalletGenerationService? walletGenerator;
 
   @override
   State<BackupDemoPage> createState() => _BackupDemoPageState();
@@ -37,6 +47,8 @@ class _BackupDemoPageState extends State<BackupDemoPage> {
   final _mnemonic = TextEditingController(text: _demoMnemonic);
   final _password = TextEditingController();
   final _label = TextEditingController(text: '主钱包');
+  late final WalletGenerationService _walletGenerator =
+      widget.walletGenerator ?? WalletGenerationService();
 
   bool _demoMode = true;
   bool _busy = false;
@@ -45,6 +57,7 @@ class _BackupDemoPageState extends State<BackupDemoPage> {
   List<CloudBackupFile> _containerFiles = const <CloudBackupFile>[];
   bool _diagnosed = false;
   bool _providerReady = false;
+  String? _currentTronAddress;
   late MnemonicCloudBackup _backups = _createBackups();
 
   MnemonicCloudBackup _createBackups() => widget.createBackups(
@@ -74,15 +87,23 @@ class _BackupDemoPageState extends State<BackupDemoPage> {
     });
     try {
       final result = await task();
-      setState(() => _status = result);
+      if (mounted) setState(() => _status = result);
     } on WrongBackupPasswordException {
-      setState(() => _status = '密码不对，请重试。');
+      if (mounted) setState(() => _status = '密码不对，请重试。');
     } on WeakBackupPasswordException catch (error) {
-      setState(() => _status = '密码至少 ${error.minLength} 个字符。');
+      if (mounted) setState(() => _status = '密码至少 ${error.minLength} 个字符。');
     } on WalletCloudBackupException catch (error) {
-      setState(() => _status = '$action失败：${error.message}');
+      if (mounted) setState(() => _status = '$action失败：${error.message}');
+    } on WalletCoreException catch (error) {
+      if (mounted) {
+        setState(() => _status = '$action失败：Wallet Core 不可用（${error.code}）。');
+      }
+    } on MissingPluginException {
+      if (mounted) setState(() => _status = '$action失败：Wallet Core 插件未注册。');
+    } on UnsupportedError {
+      if (mounted) setState(() => _status = '$action失败：当前平台不支持 Wallet Core。');
     } finally {
-      setState(() => _busy = false);
+      if (mounted) setState(() => _busy = false);
     }
   }
 
@@ -91,15 +112,93 @@ class _BackupDemoPageState extends State<BackupDemoPage> {
     return ready ? '已连接 ${_backups.cloud.provider.name}。' : '未连接：未登录或已取消。';
   });
 
+  Future<void> _generateWallet() => _run('生成', () async {
+    final generated = await _walletGenerator.generate();
+    _walletId.text = generated.walletId;
+    _mnemonic.text = generated.mnemonic;
+    _currentTronAddress = generated.tronAddress;
+    return '已生成 TRC20 钱包，请妥善保管助记词。';
+  });
+
+  Future<void> _viewPrivateKey() async {
+    final approved = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('查看 TRON 私钥？'),
+        content: const Text('私钥可完全控制此地址的资产。请确认周围无人，不要截图、分享或输入到陌生网站。'),
+        actions: <Widget>[
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('继续查看'),
+          ),
+        ],
+      ),
+    );
+    if (!mounted || approved != true) return;
+
+    await _run('查看私钥', () async {
+      final export = await _walletGenerator.exportTronPrivateKey(
+        _mnemonic.text,
+      );
+      if (_currentTronAddress != null &&
+          _currentTronAddress != export.tronAddress) {
+        throw const BackupIntegrityException('当前 TRON 地址与助记词不匹配。');
+      }
+      _currentTronAddress = export.tronAddress;
+      if (!mounted) return '私钥未显示。';
+      await showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('TRON 私钥'),
+          content: SizedBox(
+            width: 360,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Text('地址：${export.tronAddress}'),
+                const SizedBox(height: 12),
+                SelectableText(
+                  export.privateKeyHex,
+                  key: const Key('tron-private-key'),
+                  style: const TextStyle(fontFamily: 'monospace'),
+                ),
+              ],
+            ),
+          ),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('关闭'),
+            ),
+          ],
+        ),
+      );
+      return '私钥已隐藏。';
+    });
+  }
+
   Future<void> _backup() => _run('备份', () async {
+    final mnemonic = _mnemonic.text;
+    final tronAddress = await _backups.tronAddressForMnemonic(mnemonic);
+    if (_currentTronAddress != null && _currentTronAddress != tronAddress) {
+      throw const BackupIntegrityException('当前 TRC20 地址与助记词不匹配。');
+    }
     await _backups.backupMnemonic(
       walletId: _walletId.text,
-      mnemonic: _mnemonic.text,
+      mnemonic: mnemonic,
       password: _password.text,
       label: _label.text,
+      tronAddress: tronAddress,
     );
+    _currentTronAddress = tronAddress;
     _wallets = await _backups.listRestorable();
-    return '已加密并上传，已回读校验。';
+    return '已加密并上传当前 TRC20 地址，已回读校验。';
   });
 
   Future<void> _list() => _run('列出', () async {
@@ -125,8 +224,11 @@ class _BackupDemoPageState extends State<BackupDemoPage> {
       password: _password.text,
     );
     try {
-      final address = await wallet.getAddress(CoinType.ethereum);
-      return '恢复成功，ETH 地址：$address';
+      final address = await wallet.getAddress(CoinType.tron);
+      _walletId.text = walletId;
+      _mnemonic.text = await wallet.getMnemonic();
+      _currentTronAddress = address;
+      return '恢复成功，TRC20 地址：$address';
     } finally {
       await wallet.dispose();
     }
@@ -173,6 +275,7 @@ class _BackupDemoPageState extends State<BackupDemoPage> {
             ),
             TextField(
               controller: _mnemonic,
+              onChanged: (_) => setState(() => _currentTronAddress = null),
               maxLines: 2,
               // A real phrase typed here would otherwise reach the keyboard's
               // learned vocabulary and its suggestion bar. All three default
@@ -181,6 +284,13 @@ class _BackupDemoPageState extends State<BackupDemoPage> {
               enableSuggestions: false,
               enableIMEPersonalizedLearning: false,
               decoration: const InputDecoration(labelText: '助记词（示例为公开测试向量）'),
+            ),
+            const SizedBox(height: 8),
+            WalletGenerationControls(
+              onGenerate: _generateWallet,
+              onRegenerate: _generateWallet,
+              onViewPrivateKey: _viewPrivateKey,
+              tronAddress: _currentTronAddress,
             ),
             TextField(
               controller: _password,

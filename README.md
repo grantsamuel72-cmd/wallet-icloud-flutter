@@ -93,6 +93,7 @@ CI 上可以用环境变量 `GITHUB_USER` / `GITHUB_TOKEN`。如果 `settings.gr
 
 ```dart
 import 'package:wallet_cloud_backup/wallet_cloud_backup.dart';
+import 'package:wallet_core/wallet_core.dart';
 
 // 整个 App 一个实例即可。
 final cloud = WalletCloudBackup(
@@ -111,6 +112,7 @@ await backups.backupWallet(
   wallet: hdWallet,          // Wallet Core 的 HDWallet，不会被释放
   password: backupPassword,  // 至少 8 个字符
   label: '主钱包',            // 可选，明文保存，只用于恢复页显示
+  tronAddress: await hdWallet.getAddress(CoinType.tron), // 可选，校验后加密备份
 );
 // 或者直接传助记词：backups.backupMnemonic(walletId: ..., mnemonic: ..., password: ...)
 
@@ -131,6 +133,7 @@ for (final entry in await backups.listRestorable()) {
 - `verifyPassword(walletId, password: ...)`：只校验密码，适合定期提醒用户"还记得备份密码吗"。
 - `changePassword(walletId, currentPassword: ..., newPassword: ...)`：重新加密，标签保持不变。
 - `isWalletCoreAvailable()`：检查当前构建里 Wallet Core 能否运行，例如 Android ABI 不匹配时返回 false。
+- `tronAddressForMnemonic(mnemonic)`：从助记词派生 TRON/TRC20 收款地址。
 
 `backupMnemonic` 会先在内存里解密一次自检，上传后再读回来比对，都通过才返回。如果上传成功但读回
 失败，抛出的 `CloudStorageException` 会注明"可能已替换旧备份"——这时先用 `verifyPassword`
@@ -145,7 +148,8 @@ for (final entry in await backups.listRestorable()) {
 - **加密**：HKDF-SHA256 从主密钥分出 AES-256-GCM 密钥和 16 字节的密码校验值。walletId、创建时间、
   标签、KDF 参数、校验值都作为附加认证数据，被改动或换到别的钱包文件都会解密失败。
 - **明文内容**：云端文件里只有 walletId、标签、创建时间、KDF 参数和密文。明文填充到 512 字节，
-  看不出是 12 个词还是 24 个词。地址只存在密文里，用于恢复后确认派生出的钱包一致。
+  看不出是 12 个词还是 24 个词。ETH 地址及可选的 TRON/TRC20 地址只存在密文里，
+  用于恢复后确认派生出的钱包一致。旧备份仍可恢复。
 - **错误区分**：密码校验值不对 → `WrongBackupPasswordException`；密码对但密文被改 →
   `BackupIntegrityException`。能改写云端文件的人也可以通过改 KDF 参数制造"密码错误"，但拿不到内容。
 - **密码是唯一防线**：云盘账号被盗时，攻击者可以离线暴力破解。插件只强制最短长度（默认 8，不能

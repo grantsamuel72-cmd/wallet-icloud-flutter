@@ -14,7 +14,11 @@ import 'package:wallet_cloud_backup/src/domain/wallet_backup.dart';
 /// Decrypted contents of a mnemonic backup. [toString] never reveals them.
 class MnemonicBackupContents {
   /// Creates decrypted contents.
-  const MnemonicBackupContents({required this.mnemonic, required this.ethereumAddress});
+  const MnemonicBackupContents({
+    required this.mnemonic,
+    required this.ethereumAddress,
+    this.tronAddress,
+  });
 
   /// Whitespace-normalized BIP39 phrase.
   final String mnemonic;
@@ -22,6 +26,9 @@ class MnemonicBackupContents {
   /// Ethereum address at `m/44'/60'/0'/0/0` with an empty BIP39 passphrase,
   /// recorded when sealing so a restore can confirm it rebuilds the same wallet.
   final String ethereumAddress;
+
+  /// TRON address at Wallet Core's default path, if this backup recorded one.
+  final String? tronAddress;
 
   @override
   String toString() => 'MnemonicBackupContents(<redacted>)';
@@ -63,7 +70,8 @@ class MnemonicBackupHeader {
 /// - Argon2id(password, 16-byte random salt) → 32-byte master key;
 /// - HKDF-SHA256(master) → AES-256 key and a 16-byte key-check value, so a
 ///   wrong password is told apart from a damaged file without weakening the KDF;
-/// - AES-256-GCM over the mnemonic and its Ethereum address, padded to 512
+/// - AES-256-GCM over the mnemonic and its Ethereum address, plus an optional
+///   TRON address, padded to 512
 ///   bytes so the word count does not leak, with the wallet id, creation time
 ///   and every header field (label, KDF parameters, key check) as associated data.
 ///
@@ -113,6 +121,7 @@ class MnemonicSealer {
     required String walletId,
     required String mnemonic,
     required String ethereumAddress,
+    String? tronAddress,
     required String password,
     String? label,
     DateTime? createdAt,
@@ -122,7 +131,10 @@ class MnemonicSealer {
     final sealedAt = (createdAt ?? DateTime.now()).toUtc();
     final salt = Uint8List.fromList(List<int>.generate(_saltLength, (_) => _random.nextInt(256)));
     final keys = await _deriveKeys(password, salt, kdf);
-    final plaintext = _encodePlaintext(mnemonic, ethereumAddress);
+    if (tronAddress != null && tronAddress.isEmpty) {
+      throw const BackupFormatException('tronAddress must not be empty.');
+    }
+    final plaintext = _encodePlaintext(mnemonic, ethereumAddress, tronAddress);
     try {
       final header = <String, Object?>{
         'scheme': scheme,
@@ -326,11 +338,12 @@ class MnemonicSealer {
     ),
   );
 
-  static Uint8List _encodePlaintext(String mnemonic, String ethereumAddress) {
+  static Uint8List _encodePlaintext(String mnemonic, String ethereumAddress, String? tronAddress) {
     final json = utf8.encode(
       canonicalJsonEncode(<String, Object?>{
         'mnemonic': mnemonic,
         'ethereumAddress': ethereumAddress,
+        'tronAddress': ?tronAddress,
       }),
     );
     final size = max(
@@ -357,10 +370,18 @@ class MnemonicSealer {
     }
     final mnemonic = decoded['mnemonic'];
     final ethereumAddress = decoded['ethereumAddress'];
-    if (mnemonic is! String || mnemonic.isEmpty || ethereumAddress is! String) {
+    final tronAddress = decoded['tronAddress'];
+    if (mnemonic is! String ||
+        mnemonic.isEmpty ||
+        ethereumAddress is! String ||
+        (tronAddress != null && (tronAddress is! String || tronAddress.isEmpty))) {
       throw const BackupIntegrityException('The decrypted backup is malformed.');
     }
-    return MnemonicBackupContents(mnemonic: mnemonic, ethereumAddress: ethereumAddress);
+    return MnemonicBackupContents(
+      mnemonic: mnemonic,
+      ethereumAddress: ethereumAddress,
+      tronAddress: tronAddress as String?,
+    );
   }
 
   static Uint8List _decodeBase64(Object? value, String name) {

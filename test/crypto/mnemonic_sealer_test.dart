@@ -53,7 +53,21 @@ void main() {
 
       expect(contents.mnemonic, mnemonic12);
       expect(contents.ethereumAddress, '0xabc');
+      expect(contents.tronAddress, isNull);
       expect(sealer.inspect(backup)!.label, 'Main');
+    });
+
+    test('encrypts and restores an optional TRON address', () async {
+      final backup = await sealer.seal(
+        walletId: 'wallet-1',
+        mnemonic: mnemonic12,
+        ethereumAddress: '0xabc',
+        tronAddress: 'TTESTADDRESS',
+        password: _password,
+      );
+
+      expect(backup.encode(), isNot(contains('TTESTADDRESS')));
+      expect((await sealer.open(backup, password: _password)).tronAddress, 'TTESTADDRESS');
     });
 
     test('keeps the mnemonic and address out of the stored JSON', () async {
@@ -248,6 +262,7 @@ void main() {
 
       expect(contents.mnemonic, mnemonic12);
       expect(contents.ethereumAddress, '0x9858EfFD232B4033E47d90003D41EC34EcaEda94');
+      expect(contents.tronAddress, isNull);
       expect(sealer.inspect(backup)!.label, 'Golden');
     });
 

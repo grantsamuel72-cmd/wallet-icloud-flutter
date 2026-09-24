@@ -47,7 +47,8 @@ class RestorableWallet {
 /// The mnemonic is encrypted on the device (Argon2id + AES-256-GCM, see
 /// [MnemonicSealer]) and only the ciphertext is uploaded. Wallet Core's
 /// high-level API validates mnemonics and checks, after every decrypt, that the
-/// phrase still derives the Ethereum address recorded when it was sealed. The
+/// phrase still derives the Ethereum address recorded when it was sealed. If a
+/// TRON address was recorded, that derivation is checked too. The
 /// full `WalletCoreApi` is not used, so the official Trust Wallet Core SDK is
 /// enough on both platforms.
 ///
@@ -122,8 +123,10 @@ class MnemonicCloudBackup {
   /// replacing the previous backup of [walletId].
   ///
   /// The uploaded file is read back and compared before this returns. A BIP39
-  /// passphrase is never part of the backup. [label] is stored in plain text
-  /// for the restore screen; do not put addresses or balances in it.
+  /// passphrase is never part of the backup. [tronAddress], if provided, is
+  /// checked against [mnemonic] and encrypted in the file. [label] is stored
+  /// in plain text for the restore screen; do not put addresses or balances in
+  /// it.
   ///
   /// Throws [WeakBackupPasswordException], [InvalidMnemonicException],
   /// [WalletCoreUnavailableException] or a cloud error. If the upload
@@ -135,15 +138,21 @@ class MnemonicCloudBackup {
     required String mnemonic,
     required String password,
     String? label,
+    String? tronAddress,
   }) async {
     final normalizedWalletId = normalizeWalletId(walletId);
     _checkNewPassword(password);
     MnemonicSealer.normalizeLabel(label);
     final phrase = await _validMnemonic(mnemonic);
+    final derivedTronAddress = tronAddress == null ? null : await _tronAddress(phrase);
+    if (derivedTronAddress != tronAddress) {
+      throw const BackupIntegrityException('The current TRON address does not match the mnemonic.');
+    }
     final backup = await _sealer.seal(
       walletId: normalizedWalletId,
       mnemonic: phrase,
       ethereumAddress: await _ethereumAddress(phrase),
+      tronAddress: derivedTronAddress,
       password: password,
       label: label,
     );
@@ -166,6 +175,7 @@ class MnemonicCloudBackup {
     required HDWallet wallet,
     required String password,
     String? label,
+    String? tronAddress,
   }) async {
     _checkNewPassword(password);
     return backupMnemonic(
@@ -173,6 +183,7 @@ class MnemonicCloudBackup {
       mnemonic: await _core(wallet.getMnemonic),
       password: password,
       label: label,
+      tronAddress: tronAddress,
     );
   }
 
@@ -232,7 +243,11 @@ class MnemonicCloudBackup {
   /// [BackupIntegrityException] when the file was altered or no longer
   /// derives the wallet it was made from.
   Future<String> restoreMnemonic(String walletId, {required String password}) async =>
-      _openAndVerify(await cloud.restore(walletId), password);
+      (await _openAndVerify(await cloud.restore(walletId), password)).mnemonic;
+
+  /// Derives the TRON address used by TRC20 tokens from [mnemonic].
+  Future<String> tronAddressForMnemonic(String mnemonic) async =>
+      _tronAddress(await _validMnemonic(mnemonic));
 
   /// Restores [walletId] as a Wallet Core wallet. The caller must dispose it.
   ///
@@ -260,7 +275,8 @@ class MnemonicCloudBackup {
     }
   }
 
-  /// Re-encrypts [walletId]'s backup with [newPassword], keeping its label.
+  /// Re-encrypts [walletId]'s backup with [newPassword], keeping its label and
+  /// recorded TRON address.
   ///
   /// Nothing is written unless [currentPassword] opens the backup. Earlier
   /// ciphertexts may survive in the provider's version history (Google Drive
@@ -273,11 +289,12 @@ class MnemonicCloudBackup {
   }) async {
     _checkNewPassword(newPassword);
     final backup = await cloud.restore(walletId);
-    final mnemonic = await _openAndVerify(backup, currentPassword);
+    final contents = await _openAndVerify(backup, currentPassword);
     return backupMnemonic(
       walletId: walletId,
-      mnemonic: mnemonic,
+      mnemonic: contents.mnemonic,
       password: newPassword,
+      tronAddress: contents.tronAddress,
       // Authenticated by the successful open above.
       label: _sealer.inspect(backup)?.label,
     );
@@ -288,7 +305,7 @@ class MnemonicCloudBackup {
       'previous one.';
 
   /// Decrypts [backup] and checks the phrase still derives the sealed wallet.
-  Future<String> _openAndVerify(WalletBackup backup, String password) async {
+  Future<MnemonicBackupContents> _openAndVerify(WalletBackup backup, String password) async {
     final contents = await _sealer.open(backup, password: password);
     if (!await _core(() => _walletCore.isValidMnemonic(contents.mnemonic))) {
       throw const BackupIntegrityException('The restored mnemonic is not a valid BIP39 phrase.');
@@ -298,7 +315,13 @@ class MnemonicCloudBackup {
         'The restored mnemonic does not derive the wallet it was backed up from.',
       );
     }
-    return contents.mnemonic;
+    if (contents.tronAddress != null &&
+        await _tronAddress(contents.mnemonic) != contents.tronAddress) {
+      throw const BackupIntegrityException(
+        'The restored mnemonic does not derive the recorded TRON address.',
+      );
+    }
+    return contents;
   }
 
   void _checkNewPassword(String password) {
@@ -325,9 +348,17 @@ class MnemonicCloudBackup {
 
   /// Ethereum address at Wallet Core's default path, without a BIP39 passphrase.
   Future<String> _ethereumAddress(String mnemonic) async {
+    return _address(mnemonic, CoinType.ethereum);
+  }
+
+  Future<String> _tronAddress(String mnemonic) async {
+    return _address(mnemonic, CoinType.tron);
+  }
+
+  Future<String> _address(String mnemonic, CoinType coin) async {
     final wallet = await _core(() => _walletCore.importWallet(mnemonic: mnemonic));
     try {
-      return await _core(() => wallet.getAddress(CoinType.ethereum));
+      return await _core(() => wallet.getAddress(coin));
     } finally {
       try {
         await wallet.dispose();

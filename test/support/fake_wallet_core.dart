@@ -27,6 +27,9 @@ class FakeWalletCorePlatform extends WalletCorePlatform {
   /// When set, addresses are derived from this instead of the real phrase.
   String? addressSalt;
 
+  /// When set, only TRON address derivation changes.
+  String? tronAddressSalt;
+
   int _nextId = 0;
 
   /// Passphrases passed to [importWallet], in order.
@@ -70,7 +73,8 @@ class FakeWalletCorePlatform extends WalletCorePlatform {
   Future<String> getAddress(int walletId, int coin, String? derivationPath) async {
     _maybeFail();
     final wallet = wallets[walletId]!;
-    final source = '${addressSalt ?? ''}|${wallet.mnemonic}|${wallet.passphrase}|$coin';
+    final salt = coin == CoinType.tron.value ? tronAddressSalt ?? addressSalt : addressSalt;
+    final source = '${salt ?? ''}|${wallet.mnemonic}|${wallet.passphrase}|$coin';
     return '0x${base64Url.encode(utf8.encode(source)).hashCode.toRadixString(16)}';
   }
 
