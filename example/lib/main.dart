@@ -4,6 +4,7 @@ import 'package:wallet_cloud_backup/wallet_cloud_backup.dart';
 import 'package:wallet_cloud_backup_example/memory_backup_store.dart';
 import 'package:wallet_cloud_backup_example/wallet_generation_controls.dart';
 import 'package:wallet_cloud_backup_example/wallet_generation_service.dart';
+import 'package:wallet_cloud_backup_example/ui/wallet_manager_page.dart';
 import 'package:wallet_core/wallet_core.dart';
 
 /// Must match `com.apple.developer.ubiquity-container-identifiers` in
@@ -19,7 +20,37 @@ const _demoMnemonic =
     'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
 
 void main() =>
-    runApp(const MaterialApp(title: '钱包云备份示例', home: BackupDemoPage()));
+    runApp(const MaterialApp(title: '多链钱包存储示例', home: ExampleHomePage()));
+
+class ExampleHomePage extends StatefulWidget {
+  const ExampleHomePage({super.key});
+
+  @override
+  State<ExampleHomePage> createState() => _ExampleHomePageState();
+}
+
+class _ExampleHomePageState extends State<ExampleHomePage> {
+  int _selected = 0;
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    body: IndexedStack(
+      index: _selected,
+      children: const <Widget>[WalletManagerPage(), BackupDemoPage()],
+    ),
+    bottomNavigationBar: NavigationBar(
+      selectedIndex: _selected,
+      onDestinationSelected: (value) => setState(() => _selected = value),
+      destinations: const <NavigationDestination>[
+        NavigationDestination(
+          icon: Icon(Icons.account_balance_wallet),
+          label: '本地钱包',
+        ),
+        NavigationDestination(icon: Icon(Icons.cloud), label: '备份演示'),
+      ],
+    ),
+  );
+}
 
 MnemonicCloudBackup _defaultBackups(WalletCloudBackup cloud) =>
     MnemonicCloudBackup(cloud);

@@ -50,14 +50,37 @@ class FakeWalletCore extends WalletCorePlatform {
     String? derivationPath,
   ) async {
     if (coin == CoinType.tron.value) {
-      return switch (wallets[walletId]) {
+      final primary = switch (wallets[walletId]) {
         firstGeneratedMnemonic => 'TGENERATED1',
         secondGeneratedMnemonic => 'TGENERATED2',
         _ => 'TDEMO',
       };
+      return derivationPath?.endsWith('/1') ?? false ? '${primary}1' : primary;
     }
-    return '0xFAKE';
+    final primary = coin == CoinType.bitcoin.value ? 'bc1FAKE' : '0xFAKE';
+    return derivationPath?.endsWith('/1') ?? false ? '${primary}1' : primary;
   }
+
+  @override
+  Future<CoinInfo> getCoinInfo(int coin) async => CoinInfo(
+    name: 'Fake',
+    symbol: 'FAKE',
+    decimals: 18,
+    derivationPath: switch (coin) {
+      60 => "m/44'/60'/0'/0/0",
+      195 => "m/44'/195'/0'/0/0",
+      0 => "m/84'/0'/0'/0/0",
+      _ => throw ArgumentError('Unsupported fake coin'),
+    },
+  );
+
+  @override
+  Future<bool> isValidAddress(String address, int coin) async =>
+      address.isNotEmpty && !address.startsWith('bad');
+
+  @override
+  Future<String> deriveAddress(Uint8List privateKey, int coin) async =>
+      'key-$coin-${privateKey[0]}';
 
   @override
   Future<Uint8List> getPrivateKey(

@@ -331,7 +331,7 @@ final payload = await AesGcmBackupCipher().encrypt(
 
 ## 示例与测试
 
-`example/` 是可运行的 App，默认"演示模式"把备份存在内存里，不需要云盘配置就能体验备份、列出和恢复。
+`example/` 是可运行的 App，默认打开[本地多链钱包管理](example/README.md)；另一个"备份演示"页面默认使用内存存储，不需要云盘配置就能体验备份、列出和恢复。完整存储边界见[多链钱包存储方案](docs/MULTI_CHAIN_WALLET_STORAGE.md)。
 `example/integration_test/` 在真机或模拟器上用真实 Wallet Core 和真实 Argon2id 参数验证 BIP39 测试向量：
 
 ```sh
