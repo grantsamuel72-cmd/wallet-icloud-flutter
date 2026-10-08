@@ -49,6 +49,14 @@ class _CountingBackupStore extends MemoryBackupStore {
   }
 }
 
+class _CommittedThenTimedOutStore extends MemoryBackupStore {
+  @override
+  Future<CloudBackupFile> write(String fileName, Uint8List contents) async {
+    await super.write(fileName, contents);
+    throw const CloudStorageException('upload timed out after commit');
+  }
+}
+
 void main() {
   late WalletDatabase database;
   late _MemorySecrets secrets;
@@ -158,6 +166,7 @@ void main() {
         BackupHdResult.uploaded,
       );
       final checksum = (await backups.cloud.restore(created.id)).checksum;
+      final backedUpAt = (await repository.listWallets()).single.lastBackedUpAt;
 
       expect(
         await repository.backupHd(created.id, 'correct horse battery'),
@@ -166,6 +175,10 @@ void main() {
       expect(cloudStore.writes, 1);
       expect((await backups.cloud.restore(created.id)).checksum, checksum);
       expect((await repository.listWallets()).single.backupState, 'verified');
+      expect(
+        (await repository.listWallets()).single.lastBackedUpAt,
+        backedUpAt,
+      );
 
       await backups.cloud.delete(created.id);
       expect(
@@ -187,6 +200,55 @@ void main() {
     expect(cloudStore.writes, 1);
     expect((await repository.listWallets()).single.backupState, 'verified');
   });
+
+  test(
+    'a timed-out upload is marked verified only after reading it back',
+    () async {
+      final core = WalletCore(platform: FakeWalletCore());
+      final timeoutBackups = MnemonicCloudBackup.forTesting(
+        WalletCloudBackup.withStore(_CommittedThenTimedOutStore()),
+        walletCore: core,
+        kdf: _cheap,
+        minimumKdf: _cheap,
+      );
+      repository.useCloud(timeoutBackups, 'huawei:one');
+      final created = await repository.createHd(name: '主钱包');
+      expect(
+        await repository.backupHd(created.id, 'correct horse battery'),
+        BackupHdResult.uploaded,
+      );
+      expect((await repository.listWallets()).single.backupState, 'verified');
+      repository.useCloud(backups, 'huawei:two');
+      expect((await repository.listWallets()).single.backupState, 'none');
+    },
+  );
+
+  test(
+    'additional wallet requires an existing password unless recovery is chosen',
+    () async {
+      final first = await repository.createHd(name: '一');
+      final second = await repository.createHd(name: '二');
+      await repository.backupHd(first.id, 'correct horse battery');
+      await expectLater(
+        repository.backupHd(second.id, 'different password'),
+        throwsA(isA<WrongBackupPasswordException>()),
+      );
+      expect(cloudStore.writes, 1);
+      await repository.backupHd(
+        second.id,
+        'different password',
+        useNewPassword: true,
+      );
+      expect(cloudStore.writes, 2);
+      expect(
+        await backups.verifyPassword(
+          first.id,
+          password: 'correct horse battery',
+        ),
+        isTrue,
+      );
+    },
+  );
 
   test(
     'different cloud mnemonic with the same ID is never overwritten',

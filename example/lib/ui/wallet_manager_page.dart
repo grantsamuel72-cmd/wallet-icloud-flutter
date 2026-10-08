@@ -1,5 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:wallet_cloud_backup/wallet_cloud_backup.dart';
+import 'package:wallet_cloud_backup_example/data/huawei_cloud_session.dart';
+import 'package:wallet_cloud_backup_example/data/local_wallet_password.dart';
 import 'package:wallet_cloud_backup_example/data/wallet_database.dart';
 import 'package:wallet_cloud_backup_example/data/wallet_repository.dart';
 import 'package:wallet_cloud_backup_example/data/wallet_secret_store.dart';
@@ -24,13 +29,22 @@ class _WalletManagerPageState extends State<WalletManagerPage> {
   final _backupPassword = TextEditingController();
   WalletKind _kind = WalletKind.hd;
   WalletChain _watchChain = WalletChain.evm;
+  bool _useNewBackupPassword = false;
   late final WalletDatabase? _ownedDatabase;
+  late final HuaweiCloudSession? _ownedHuaweiSession;
   late final WalletManagerViewModel _model;
+  String? _lastNotice;
 
   @override
   void initState() {
     super.initState();
     _ownedDatabase = widget.viewModel == null ? WalletDatabase() : null;
+    final huaweiSession =
+        widget.viewModel == null &&
+            defaultTargetPlatform == TargetPlatform.android
+        ? HuaweiCloudSession()
+        : null;
+    _ownedHuaweiSession = huaweiSession;
     _model =
         widget.viewModel ??
         WalletManagerViewModel(
@@ -47,8 +61,31 @@ class _WalletManagerPageState extends State<WalletManagerPage> {
               ),
             ),
           ),
+          huaweiSession: huaweiSession,
+          localPassword: LocalWalletPassword(SecureWalletSecretStore()),
+          huaweiBackups: huaweiSession == null
+              ? null
+              : MnemonicCloudBackup(
+                  WalletCloudBackup.withStore(
+                    HuaweiDriveBackupStore(
+                      credentialsProvider: huaweiSession.credentials,
+                    ),
+                  ),
+                ),
         );
+    _model.addListener(_showOperationNotice);
     _model.load();
+  }
+
+  void _showOperationNotice() {
+    final message = _model.status;
+    if (!mounted || message == _lastNotice) return;
+    _lastNotice = message;
+    if (message == '已备份。' || message == '备份已删除。') {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(message)));
+    }
   }
 
   @override
@@ -58,7 +95,11 @@ class _WalletManagerPageState extends State<WalletManagerPage> {
     _privateKey.dispose();
     _watchAddress.dispose();
     _backupPassword.dispose();
+    _model.removeListener(_showOperationNotice);
     if (widget.viewModel == null) _model.dispose();
+    if (_ownedHuaweiSession case final session?) {
+      unawaited(session.dispose());
+    }
     _ownedDatabase?.close();
     super.dispose();
   }
@@ -182,7 +223,14 @@ class _WalletManagerPageState extends State<WalletManagerPage> {
 
   Future<void> _backup(StoredWallet wallet) async {
     try {
-      await _model.backup(wallet.id, _backupPassword.text);
+      final local = await _requestLocalPassword();
+      if (local == null) return;
+      await _model.backup(
+        wallet.id,
+        _backupPassword.text,
+        useNewPassword: _useNewBackupPassword,
+        localWalletPassword: local,
+      );
     } finally {
       _backupPassword.clear();
     }
@@ -190,10 +238,111 @@ class _WalletManagerPageState extends State<WalletManagerPage> {
 
   Future<void> _restore(RestorableWallet entry) async {
     try {
-      await _model.restore(entry, _backupPassword.text);
+      final local = await _requestLocalPassword();
+      if (local == null) return;
+      await _model.restore(
+        entry,
+        _backupPassword.text,
+        localWalletPassword: local,
+      );
     } finally {
       _backupPassword.clear();
     }
+  }
+
+  Future<void> _deleteCloud(RestorableWallet entry) async {
+    final approved = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text('删除云备份 ${entry.label ?? entry.walletId}？'),
+        content: const Text('这会删除当前云盘账号中的加密备份文件，无法撤销。'),
+        actions: <Widget>[
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('删除云备份'),
+          ),
+        ],
+      ),
+    );
+    if (approved == true) {
+      final local = await _requestLocalPassword(allowSetup: false);
+      if (local != null) {
+        await _model.deleteCloud(entry, localWalletPassword: local);
+      }
+    }
+  }
+
+  Future<String?> _requestLocalPassword({bool allowSetup = true}) async {
+    if (_model.localPassword == null) return '';
+    final configured = await _model.localPasswordConfigured();
+    if (!mounted) return null;
+    if (!configured && !allowSetup) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('请先为本地钱包设置 Web3 钱包密码。')));
+      return null;
+    }
+    final password = TextEditingController();
+    final confirm = TextEditingController();
+    String? error;
+    final result = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, update) => AlertDialog(
+          title: Text(configured ? '验证 Web3 钱包密码' : '设置 Web3 钱包密码'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              TextField(
+                controller: password,
+                obscureText: true,
+                autocorrect: false,
+                enableSuggestions: false,
+                decoration: const InputDecoration(labelText: 'Web3 钱包密码'),
+              ),
+              if (!configured)
+                TextField(
+                  controller: confirm,
+                  obscureText: true,
+                  autocorrect: false,
+                  enableSuggestions: false,
+                  decoration: const InputDecoration(labelText: '再次输入'),
+                ),
+              if (error != null)
+                Text(
+                  error!,
+                  style: TextStyle(color: Theme.of(context).colorScheme.error),
+                ),
+            ],
+          ),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              onPressed: () {
+                if (!configured &&
+                    (password.text.runes.length < 8 ||
+                        password.text != confirm.text)) {
+                  update(() => error = '密码至少 8 位，且两次输入须一致。');
+                  return;
+                }
+                Navigator.pop(dialogContext, password.text);
+              },
+              child: const Text('继续'),
+            ),
+          ],
+        ),
+      ),
+    );
+    password.dispose();
+    confirm.dispose();
+    return result;
   }
 
   @override
@@ -273,6 +422,45 @@ class _WalletManagerPageState extends State<WalletManagerPage> {
             for (final wallet in _model.wallets) _walletTile(wallet),
             const Divider(height: 32),
             Text('云备份与恢复', style: Theme.of(context).textTheme.titleLarge),
+            if (defaultTargetPlatform == TargetPlatform.android &&
+                _model.huaweiBackups != null)
+              DropdownButtonFormField<CloudBackupProvider>(
+                key: ValueKey(_model.selectedProvider),
+                initialValue: _model.selectedProvider,
+                decoration: const InputDecoration(labelText: '云盘'),
+                items: const <DropdownMenuItem<CloudBackupProvider>>[
+                  DropdownMenuItem(
+                    value: CloudBackupProvider.googleDrive,
+                    child: Text('Google 云盘'),
+                  ),
+                  DropdownMenuItem(
+                    value: CloudBackupProvider.huaweiDrive,
+                    child: Text('华为云盘'),
+                  ),
+                ],
+                onChanged: (value) {
+                  if (value != null && value != _model.selectedProvider) {
+                    _model.selectCloud(value);
+                  }
+                },
+              ),
+            if (_model.selectedProvider == CloudBackupProvider.huaweiDrive)
+              Row(
+                children: <Widget>[
+                  Expanded(
+                    child: Text(
+                      _model.huaweiAccountId == null
+                          ? '华为账号待确认'
+                          : '当前 HUAWEI ID：${_model.huaweiAccountId}',
+                    ),
+                  ),
+                  TextButton(
+                    onPressed: () =>
+                        _model.selectCloud(CloudBackupProvider.huaweiDrive),
+                    child: const Text('刷新账号'),
+                  ),
+                ],
+              ),
             const Text(
               '为本地 HD 钱包备份到云盘前，请输入至少 8 位密码。密码不会保存在设备上；恢复后会重建默认 ETH、TRON、BTC 地址。',
             ),
@@ -282,6 +470,13 @@ class _WalletManagerPageState extends State<WalletManagerPage> {
               autocorrect: false,
               enableSuggestions: false,
               decoration: const InputDecoration(labelText: '备份密码'),
+            ),
+            CheckboxListTile(
+              value: _useNewBackupPassword,
+              title: const Text('忘记旧备份密码，为新备份设置新密码'),
+              subtitle: const Text('已有云备份仍需各自的原密码；不会覆盖已有备份。'),
+              onChanged: (value) =>
+                  setState(() => _useNewBackupPassword = value ?? false),
             ),
             Wrap(
               spacing: 8,
@@ -300,12 +495,20 @@ class _WalletManagerPageState extends State<WalletManagerPage> {
               ListTile(
                 title: Text(entry.label ?? entry.walletId),
                 subtitle: Text(entry.error?.message ?? entry.walletId),
-                trailing: entry.isRestorable
-                    ? TextButton(
+                trailing: Wrap(
+                  spacing: 4,
+                  children: <Widget>[
+                    if (entry.isRestorable)
+                      TextButton(
                         onPressed: () => _restore(entry),
                         child: const Text('恢复到本机'),
-                      )
-                    : null,
+                      ),
+                    TextButton(
+                      onPressed: () => _deleteCloud(entry),
+                      child: const Text('删除云备份'),
+                    ),
+                  ],
+                ),
               ),
             if (_model.busy) const LinearProgressIndicator(),
             Text(_model.status),
@@ -323,7 +526,7 @@ class _WalletManagerPageState extends State<WalletManagerPage> {
           'verified' => '已验证',
           'failed' => '失败',
           _ => '未备份',
-        }}',
+        }}${wallet.lastBackedUpAt == null ? '' : ' · 最近备份 ${_backupTime(wallet.lastBackedUpAt!)}'}',
       ),
       children: <Widget>[
         for (final address in wallet.addresses)
@@ -360,4 +563,10 @@ class _WalletManagerPageState extends State<WalletManagerPage> {
       ],
     ),
   );
+
+  String _backupTime(DateTime value) {
+    final local = value.toLocal();
+    String two(int number) => number.toString().padLeft(2, '0');
+    return '${local.year}-${two(local.month)}-${two(local.day)} ${two(local.hour)}:${two(local.minute)}';
+  }
 }

@@ -2196,12 +2196,22 @@ class $BackupStatusRowsTable extends BackupStatusRows
         type: DriftSqlType.dateTime,
         requiredDuringInsert: false,
       );
+  static const VerificationMeta _scopeMeta = const VerificationMeta('scope');
+  @override
+  late final GeneratedColumn<String> scope = GeneratedColumn<String>(
+    'scope',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   @override
   List<GeneratedColumn> get $columns => [
     walletId,
     state,
     remoteChecksum,
     lastVerifiedAt,
+    scope,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -2247,6 +2257,12 @@ class $BackupStatusRowsTable extends BackupStatusRows
         ),
       );
     }
+    if (data.containsKey('scope')) {
+      context.handle(
+        _scopeMeta,
+        scope.isAcceptableOrUnknown(data['scope']!, _scopeMeta),
+      );
+    }
     return context;
   }
 
@@ -2272,6 +2288,10 @@ class $BackupStatusRowsTable extends BackupStatusRows
         DriftSqlType.dateTime,
         data['${effectivePrefix}last_verified_at'],
       ),
+      scope: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}scope'],
+      ),
     );
   }
 
@@ -2286,11 +2306,13 @@ class BackupStatusRow extends DataClass implements Insertable<BackupStatusRow> {
   final String state;
   final String? remoteChecksum;
   final DateTime? lastVerifiedAt;
+  final String? scope;
   const BackupStatusRow({
     required this.walletId,
     required this.state,
     this.remoteChecksum,
     this.lastVerifiedAt,
+    this.scope,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -2302,6 +2324,9 @@ class BackupStatusRow extends DataClass implements Insertable<BackupStatusRow> {
     }
     if (!nullToAbsent || lastVerifiedAt != null) {
       map['last_verified_at'] = Variable<DateTime>(lastVerifiedAt);
+    }
+    if (!nullToAbsent || scope != null) {
+      map['scope'] = Variable<String>(scope);
     }
     return map;
   }
@@ -2316,6 +2341,9 @@ class BackupStatusRow extends DataClass implements Insertable<BackupStatusRow> {
       lastVerifiedAt: lastVerifiedAt == null && nullToAbsent
           ? const Value.absent()
           : Value(lastVerifiedAt),
+      scope: scope == null && nullToAbsent
+          ? const Value.absent()
+          : Value(scope),
     );
   }
 
@@ -2329,6 +2357,7 @@ class BackupStatusRow extends DataClass implements Insertable<BackupStatusRow> {
       state: serializer.fromJson<String>(json['state']),
       remoteChecksum: serializer.fromJson<String?>(json['remoteChecksum']),
       lastVerifiedAt: serializer.fromJson<DateTime?>(json['lastVerifiedAt']),
+      scope: serializer.fromJson<String?>(json['scope']),
     );
   }
   @override
@@ -2339,6 +2368,7 @@ class BackupStatusRow extends DataClass implements Insertable<BackupStatusRow> {
       'state': serializer.toJson<String>(state),
       'remoteChecksum': serializer.toJson<String?>(remoteChecksum),
       'lastVerifiedAt': serializer.toJson<DateTime?>(lastVerifiedAt),
+      'scope': serializer.toJson<String?>(scope),
     };
   }
 
@@ -2347,6 +2377,7 @@ class BackupStatusRow extends DataClass implements Insertable<BackupStatusRow> {
     String? state,
     Value<String?> remoteChecksum = const Value.absent(),
     Value<DateTime?> lastVerifiedAt = const Value.absent(),
+    Value<String?> scope = const Value.absent(),
   }) => BackupStatusRow(
     walletId: walletId ?? this.walletId,
     state: state ?? this.state,
@@ -2356,6 +2387,7 @@ class BackupStatusRow extends DataClass implements Insertable<BackupStatusRow> {
     lastVerifiedAt: lastVerifiedAt.present
         ? lastVerifiedAt.value
         : this.lastVerifiedAt,
+    scope: scope.present ? scope.value : this.scope,
   );
   BackupStatusRow copyWithCompanion(BackupStatusRowsCompanion data) {
     return BackupStatusRow(
@@ -2367,6 +2399,7 @@ class BackupStatusRow extends DataClass implements Insertable<BackupStatusRow> {
       lastVerifiedAt: data.lastVerifiedAt.present
           ? data.lastVerifiedAt.value
           : this.lastVerifiedAt,
+      scope: data.scope.present ? data.scope.value : this.scope,
     );
   }
 
@@ -2376,14 +2409,15 @@ class BackupStatusRow extends DataClass implements Insertable<BackupStatusRow> {
           ..write('walletId: $walletId, ')
           ..write('state: $state, ')
           ..write('remoteChecksum: $remoteChecksum, ')
-          ..write('lastVerifiedAt: $lastVerifiedAt')
+          ..write('lastVerifiedAt: $lastVerifiedAt, ')
+          ..write('scope: $scope')
           ..write(')'))
         .toString();
   }
 
   @override
   int get hashCode =>
-      Object.hash(walletId, state, remoteChecksum, lastVerifiedAt);
+      Object.hash(walletId, state, remoteChecksum, lastVerifiedAt, scope);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -2391,7 +2425,8 @@ class BackupStatusRow extends DataClass implements Insertable<BackupStatusRow> {
           other.walletId == this.walletId &&
           other.state == this.state &&
           other.remoteChecksum == this.remoteChecksum &&
-          other.lastVerifiedAt == this.lastVerifiedAt);
+          other.lastVerifiedAt == this.lastVerifiedAt &&
+          other.scope == this.scope);
 }
 
 class BackupStatusRowsCompanion extends UpdateCompanion<BackupStatusRow> {
@@ -2399,12 +2434,14 @@ class BackupStatusRowsCompanion extends UpdateCompanion<BackupStatusRow> {
   final Value<String> state;
   final Value<String?> remoteChecksum;
   final Value<DateTime?> lastVerifiedAt;
+  final Value<String?> scope;
   final Value<int> rowid;
   const BackupStatusRowsCompanion({
     this.walletId = const Value.absent(),
     this.state = const Value.absent(),
     this.remoteChecksum = const Value.absent(),
     this.lastVerifiedAt = const Value.absent(),
+    this.scope = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   BackupStatusRowsCompanion.insert({
@@ -2412,6 +2449,7 @@ class BackupStatusRowsCompanion extends UpdateCompanion<BackupStatusRow> {
     this.state = const Value.absent(),
     this.remoteChecksum = const Value.absent(),
     this.lastVerifiedAt = const Value.absent(),
+    this.scope = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : walletId = Value(walletId);
   static Insertable<BackupStatusRow> custom({
@@ -2419,6 +2457,7 @@ class BackupStatusRowsCompanion extends UpdateCompanion<BackupStatusRow> {
     Expression<String>? state,
     Expression<String>? remoteChecksum,
     Expression<DateTime>? lastVerifiedAt,
+    Expression<String>? scope,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -2426,6 +2465,7 @@ class BackupStatusRowsCompanion extends UpdateCompanion<BackupStatusRow> {
       if (state != null) 'state': state,
       if (remoteChecksum != null) 'remote_checksum': remoteChecksum,
       if (lastVerifiedAt != null) 'last_verified_at': lastVerifiedAt,
+      if (scope != null) 'scope': scope,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -2435,6 +2475,7 @@ class BackupStatusRowsCompanion extends UpdateCompanion<BackupStatusRow> {
     Value<String>? state,
     Value<String?>? remoteChecksum,
     Value<DateTime?>? lastVerifiedAt,
+    Value<String?>? scope,
     Value<int>? rowid,
   }) {
     return BackupStatusRowsCompanion(
@@ -2442,6 +2483,7 @@ class BackupStatusRowsCompanion extends UpdateCompanion<BackupStatusRow> {
       state: state ?? this.state,
       remoteChecksum: remoteChecksum ?? this.remoteChecksum,
       lastVerifiedAt: lastVerifiedAt ?? this.lastVerifiedAt,
+      scope: scope ?? this.scope,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -2461,6 +2503,9 @@ class BackupStatusRowsCompanion extends UpdateCompanion<BackupStatusRow> {
     if (lastVerifiedAt.present) {
       map['last_verified_at'] = Variable<DateTime>(lastVerifiedAt.value);
     }
+    if (scope.present) {
+      map['scope'] = Variable<String>(scope.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -2474,6 +2519,7 @@ class BackupStatusRowsCompanion extends UpdateCompanion<BackupStatusRow> {
           ..write('state: $state, ')
           ..write('remoteChecksum: $remoteChecksum, ')
           ..write('lastVerifiedAt: $lastVerifiedAt, ')
+          ..write('scope: $scope, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -4629,6 +4675,7 @@ typedef $$BackupStatusRowsTableCreateCompanionBuilder =
       Value<String> state,
       Value<String?> remoteChecksum,
       Value<DateTime?> lastVerifiedAt,
+      Value<String?> scope,
       Value<int> rowid,
     });
 typedef $$BackupStatusRowsTableUpdateCompanionBuilder =
@@ -4637,6 +4684,7 @@ typedef $$BackupStatusRowsTableUpdateCompanionBuilder =
       Value<String> state,
       Value<String?> remoteChecksum,
       Value<DateTime?> lastVerifiedAt,
+      Value<String?> scope,
       Value<int> rowid,
     });
 
@@ -4695,6 +4743,11 @@ class $$BackupStatusRowsTableFilterComposer
     builder: (column) => ColumnFilters(column),
   );
 
+  ColumnFilters<String> get scope => $composableBuilder(
+    column: $table.scope,
+    builder: (column) => ColumnFilters(column),
+  );
+
   $$WalletRowsTableFilterComposer get walletId {
     final $$WalletRowsTableFilterComposer composer = $composerBuilder(
       composer: this,
@@ -4743,6 +4796,11 @@ class $$BackupStatusRowsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get scope => $composableBuilder(
+    column: $table.scope,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   $$WalletRowsTableOrderingComposer get walletId {
     final $$WalletRowsTableOrderingComposer composer = $composerBuilder(
       composer: this,
@@ -4788,6 +4846,9 @@ class $$BackupStatusRowsTableAnnotationComposer
     column: $table.lastVerifiedAt,
     builder: (column) => column,
   );
+
+  GeneratedColumn<String> get scope =>
+      $composableBuilder(column: $table.scope, builder: (column) => column);
 
   $$WalletRowsTableAnnotationComposer get walletId {
     final $$WalletRowsTableAnnotationComposer composer = $composerBuilder(
@@ -4847,12 +4908,14 @@ class $$BackupStatusRowsTableTableManager
                 Value<String> state = const Value.absent(),
                 Value<String?> remoteChecksum = const Value.absent(),
                 Value<DateTime?> lastVerifiedAt = const Value.absent(),
+                Value<String?> scope = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => BackupStatusRowsCompanion(
                 walletId: walletId,
                 state: state,
                 remoteChecksum: remoteChecksum,
                 lastVerifiedAt: lastVerifiedAt,
+                scope: scope,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -4861,12 +4924,14 @@ class $$BackupStatusRowsTableTableManager
                 Value<String> state = const Value.absent(),
                 Value<String?> remoteChecksum = const Value.absent(),
                 Value<DateTime?> lastVerifiedAt = const Value.absent(),
+                Value<String?> scope = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => BackupStatusRowsCompanion.insert(
                 walletId: walletId,
                 state: state,
                 remoteChecksum: remoteChecksum,
                 lastVerifiedAt: lastVerifiedAt,
+                scope: scope,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0

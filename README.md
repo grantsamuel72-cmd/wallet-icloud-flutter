@@ -1,11 +1,12 @@
 # wallet_cloud_backup
 
-Flutter Web3 钱包的云备份插件，一套 API，按平台自动选择存储：
+Flutter Web3 钱包的云备份插件，一套 API，默认按平台选择存储；Android 也可显式选择华为云盘：
 
 | 平台 | 存储位置 | 用户侧前提 |
 | --- | --- | --- |
 | iOS 13+ | iCloud Drive，应用自己的 ubiquity container（`WalletBackups/`，Files App 不可见） | 已登录 iCloud 并开启 iCloud Drive |
-| Android API 24+ | Google Drive 隐藏的 `appDataFolder`（其他应用和普通 Drive 列表都看不到） | 首次使用时选择 Google 账号并授权 |
+| Android API 27+ | Google Drive 隐藏的 `appDataFolder`（其他应用和普通 Drive 列表都看不到） | 首次使用时选择 Google 账号并授权 |
+| Android API 27+ | Huawei Drive 隐藏的 `applicationData`（显式选择） | Huawei ID 登录并授权 `drive.appdata` |
 
 其他平台调用 `WalletCloudBackup(...)` 会抛出 `UnsupportedError`。
 
@@ -22,8 +23,9 @@ dependencies:
 ```
 
 开发使用 Flutter 3.44.8（Dart 3.12），项目根目录的 `.fvmrc` 已固定该版本，命令请用
-`fvm flutter ...`。本插件没有自己的原生代码，原生能力来自 `wallet_core`、`icloud_storage_plus`
-和 `google_sign_in`，宿主 App 构建时会自动注册。
+`fvm flutter ...`。本插件没有自己的原生代码，原生能力来自 `wallet_core`、`icloud_storage_plus`、
+`google_sign_in` 和 `huawei_drive`，宿主 App 构建时会自动注册。使用本插件的 Android App 现在需要
+minSdk 27，因为 `huawei_drive` 插件要求该版本。
 
 `wallet_core` 以 git 依赖引入，固定在提交 `d93b9da594cc8ce4049dd687e03620727c88c149`。如果 App
 自己也 `import 'package:wallet_core/wallet_core.dart'`，必须在 App 的 pubspec 里写**同一个 url 和
@@ -55,13 +57,56 @@ ref**，否则依赖解析会冲突：
 2. 配置 OAuth 同意屏幕，添加 scope `https://www.googleapis.com/auth/drive.appdata`。
 3. 创建 **Android** 类型的 OAuth Client：包名 + 签名证书 SHA-1。debug、release、
    Play 应用签名的 SHA-1 各需一个，缺失会表现为授权被"取消"。
-4. `android/app/build.gradle` 中 `minSdk = 24` 或更高。
+4. `android/app/build.gradle` 中 `minSdk = 27` 或更高（由 `huawei_drive` 依赖要求）。
 
 插件只做 Drive 授权，不做 Google 登录，所以 **不需要** `google-services.json` 或 `serverClientId`。
 
 `google_sign_in` 每个进程只能初始化一次。如果 App 自己已经在做 Google 登录并调用了
 `GoogleSignIn.instance.initialize`，请传 `GoogleDriveOptions(initializeGoogleSignIn: false)`，
 避免重复初始化。
+
+### Android：Huawei Drive（可选）
+
+`huawei_drive: ^5.0.1+300` 已加入插件依赖。Huawei Drive 不会自动替换 Google Drive；显式创建
+`HuaweiDriveBackupStore` 并传给 `WalletCloudBackup.withStore`：
+
+```dart
+import 'package:flutter/services.dart';
+import 'package:huawei_account/huawei_account.dart';
+import 'package:huawei_drive/huawei_drive.dart';
+import 'package:wallet_cloud_backup/wallet_cloud_backup.dart';
+
+final cloud = WalletCloudBackup.withStore(
+  HuaweiDriveBackupStore(
+    credentialsProvider: ({required interactive}) async {
+      // 先静默获取授权；需要用户操作时再调用华为官方授权界面。
+      AuthAccount? account;
+      try {
+        account = await authService.silentSignIn();
+      } on PlatformException {
+        if (!interactive) return null;
+        account = await authService.signIn();
+      }
+      if (account == null) return null;
+      return DriveCredentials(
+        unionId: account.unionId,
+        accessToken: account.accessToken,
+        callback: () async => (await authService.silentSignIn())?.accessToken,
+      );
+    },
+  ),
+);
+final backups = MnemonicCloudBackup(cloud);
+```
+
+示例中的 `authService` 由宿主 App 用 [`huawei_account`](https://pub.dev/packages/huawei_account) 创建，
+登录时只需请求 `https://www.huawei.com/auth/drive.appdata` 范围。示例的
+[`HuaweiCloudSession`](example/lib/data/huawei_cloud_session.dart) 同时处理 HMS Core 可用性与官方修复引导。
+宿主 App 还需在 AppGallery Connect
+启用 Drive Kit、配置包名与签名证书，并将 `agconnect-services.json` 放入 `android/app/`，按
+[华为官方配置说明](https://developer.huawei.com/consumer/en/doc/HMS-Plugin-Guides-V1/config-agc-0000001096585687-V1)
+接入 AGConnect Gradle 插件和 Maven 仓库。凭据回调在非交互调用时应使用静默登录；无授权则返回
+`null`。`disconnect()` 只清除当前 Drive 实例，Huawei ID 的退出由宿主 App 负责。
 
 ### Android：Wallet Core SDK
 

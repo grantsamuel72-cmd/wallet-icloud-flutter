@@ -29,7 +29,8 @@ class ICloudOptions {
 }
 
 /// Wallet backup and restore on the platform's own cloud: iCloud Drive on iOS
-/// and the hidden Google Drive `appDataFolder` on Android.
+/// and the hidden Google Drive `appDataFolder` on Android. Huawei Drive can be
+/// selected explicitly through [WalletCloudBackup.withStore].
 ///
 /// Each wallet is stored in its own file derived from [WalletBackup.walletId],
 /// so backing up one wallet never replaces another.

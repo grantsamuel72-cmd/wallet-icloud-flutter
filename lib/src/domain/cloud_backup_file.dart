@@ -5,6 +5,9 @@ enum CloudBackupProvider {
 
   /// Google Drive's hidden application data folder (Android).
   googleDrive,
+
+  /// Huawei Drive's hidden application data folder (Android).
+  huaweiDrive,
 }
 
 /// Metadata describing a cloud backup object.
@@ -42,7 +45,7 @@ class CloudBackupFile {
   /// File size reported by the provider.
   final int? sizeInBytes;
 
-  /// Whether iCloud reports unresolved document versions. Always false on Google Drive.
+  /// Whether iCloud reports unresolved document versions. False on Google and Huawei Drive.
   final bool hasUnresolvedConflicts;
 
   /// Returns a copy with [walletId] set.
@@ -75,7 +78,7 @@ class BackupConflictVersion {
 /// Part of the [CloudBackupStore] contract: a custom store should sort its
 /// `list()` result with this so it answers like the built-in backends.
 ///
-/// Both backends sort with this, so `list()` returns the same order whatever
+/// Built-in backends sort with this, so `list()` returns the same order whatever
 /// the provider reports. Entries with no time at all sort last, then by name,
 /// which keeps the result stable.
 int compareBackupsNewestFirst(CloudBackupFile left, CloudBackupFile right) {

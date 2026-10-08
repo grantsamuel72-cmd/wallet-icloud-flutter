@@ -1,7 +1,7 @@
 name: wallet_cloud_backup
 description: >-
-  Cross-platform encrypted wallet backups for Flutter: iCloud Drive on iOS and
-  Google Drive appDataFolder on Android.
+  Cross-platform encrypted wallet backups for Flutter: iCloud Drive on iOS,
+  Google Drive and optional Huawei Drive on Android.
 version: 0.3.1
 publish_to: none
 
@@ -21,7 +21,9 @@ dependencies:
   google_sign_in: ^7.2.0
   googleapis: ^17.0.0
   http: ^1.6.0
+  huawei_drive: ^5.0.1+300
   icloud_storage_plus: ^4.0.0
+  path: ^1.9.1
   wallet_core:
     git:
       url: https://github.com/grantsamuel72-cmd/wallet-core-flutter.git

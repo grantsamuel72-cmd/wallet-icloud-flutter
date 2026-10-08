@@ -5,6 +5,7 @@ library;
 export 'src/crypto/aes_gcm_backup_cipher.dart';
 export 'src/crypto/backup_kdf.dart' show BackupKdfParameters;
 export 'src/data/google_drive_backup_store.dart';
+export 'src/data/huawei_drive_backup_store.dart';
 export 'src/data/icloud_backup_store.dart';
 export 'src/data/local_backup_cache.dart';
 export 'src/domain/backup_file_names.dart'

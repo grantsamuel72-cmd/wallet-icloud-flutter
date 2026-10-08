@@ -95,6 +95,7 @@ class BackupStatusRows extends Table {
   TextColumn get state => text().withDefault(const Constant('none'))();
   TextColumn get remoteChecksum => text().nullable()();
   DateTimeColumn get lastVerifiedAt => dateTime().nullable()();
+  TextColumn get scope => text().nullable()();
 
   @override
   Set<Column<Object>> get primaryKey => {walletId};
@@ -135,11 +136,14 @@ class WalletDatabase extends _$WalletDatabase {
       );
 
   @override
-  int get schemaVersion => 1;
+  int get schemaVersion => 2;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
     onCreate: (m) async => m.createAll(),
+    onUpgrade: (m, from, to) async {
+      if (from < 2) await m.addColumn(backupStatusRows, backupStatusRows.scope);
+    },
     beforeOpen: (details) async => customStatement('PRAGMA foreign_keys = ON'),
   );
 }

@@ -28,8 +28,14 @@ class WalletRepository {
   final WalletDatabase database;
   final WalletSecretStore secrets;
   final WalletCore core;
-  final MnemonicCloudBackup backups;
+  MnemonicCloudBackup backups;
   final Random _random;
+  String _cloudScope = 'default';
+
+  void useCloud(MnemonicCloudBackup service, String scope) {
+    backups = service;
+    _cloudScope = scope;
+  }
 
   String _id() {
     final bytes = List<int>.generate(16, (_) => _random.nextInt(256));
@@ -86,7 +92,11 @@ class WalletRepository {
           name: row.name,
           kind: WalletKind.fromDatabase(row.kind),
           state: missingSecret ? 'needs_restore' : row.state,
-          backupState: status?.state ?? 'none',
+          backupState: status?.scope == _cloudScope ? status!.state : 'none',
+          lastBackedUpAt:
+              status?.scope == _cloudScope && status?.state == 'verified'
+              ? status?.lastVerifiedAt
+              : null,
           addresses: List<StoredAddress>.unmodifiable(addresses),
         ),
       );
@@ -342,7 +352,11 @@ class WalletRepository {
     }
   }
 
-  Future<BackupHdResult> backupHd(String walletId, String password) async {
+  Future<BackupHdResult> backupHd(
+    String walletId,
+    String password, {
+    bool useNewPassword = false,
+  }) async {
     final row = await _wallet(walletId);
     if (row == null ||
         row.kind != WalletKind.hd.databaseValue ||
@@ -383,8 +397,31 @@ class WalletRepository {
       if (cloudPhrase != phrase) {
         throw StateError('云端已有同 ID 的不同钱包备份，已停止上传以避免覆盖。');
       }
-      await _markBackupVerified(walletId, existing.checksum);
+      await _markBackupVerified(
+        walletId,
+        existing.checksum,
+        existing.createdAt,
+      );
       return BackupHdResult.alreadyBackedUp;
+    }
+
+    // Normal additional backups use a password that opens an existing backup.
+    // Explicit recovery mode creates only this new backup under a new password.
+    if (!useNewPassword) {
+      final entries = await backups.listRestorable();
+      if (entries.any((entry) => entry.isRestorable)) {
+        var accepted = false;
+        for (final entry in entries.where((entry) => entry.isRestorable)) {
+          if (await backups.verifyPassword(
+            entry.walletId,
+            password: password,
+          )) {
+            accepted = true;
+            break;
+          }
+        }
+        if (!accepted) throw const WrongBackupPasswordException();
+      }
     }
 
     try {
@@ -396,29 +433,74 @@ class WalletRepository {
         tronAddress: tron.address,
       );
       final stored = await backups.cloud.restore(walletId);
-      await _markBackupVerified(walletId, stored.checksum);
+      await _markBackupVerified(walletId, stored.checksum, stored.createdAt);
       return BackupHdResult.uploaded;
-    } catch (_) {
-      await (database.update(database.backupStatusRows)
-            ..where((t) => t.walletId.equals(walletId)))
-          .write(const BackupStatusRowsCompanion(state: Value('failed')));
+    } on WalletCloudBackupException {
+      // A timeout can happen after the provider committed the upload. Check
+      // that the exact wallet is now readable before offering a retry.
+      try {
+        final stored = await backups.cloud.restore(walletId);
+        final cloudPhrase = await backups.restoreMnemonic(
+          walletId,
+          password: password,
+        );
+        if (cloudPhrase == phrase) {
+          await _markBackupVerified(
+            walletId,
+            stored.checksum,
+            stored.createdAt,
+          );
+          return BackupHdResult.uploaded;
+        }
+      } on Exception {
+        // Keep the previous confirmed state when cloud verification is uncertain.
+      }
       rethrow;
     }
   }
 
-  Future<void> _markBackupVerified(String walletId, String checksum) async {
+  Future<void> _markBackupVerified(
+    String walletId,
+    String checksum,
+    DateTime backedUpAt,
+  ) async {
     await (database.update(
       database.backupStatusRows,
     )..where((t) => t.walletId.equals(walletId))).write(
       BackupStatusRowsCompanion(
         state: const Value('verified'),
         remoteChecksum: Value(checksum),
-        lastVerifiedAt: Value(DateTime.now().toUtc()),
+        lastVerifiedAt: Value(backedUpAt.toUtc()),
+        scope: Value(_cloudScope),
       ),
     );
   }
 
   Future<List<RestorableWallet>> listCloudWallets() => backups.listRestorable();
+
+  Future<void> deleteCloudBackup(RestorableWallet entry) async {
+    // Verify the record still exists under the currently authorized account.
+    await backups.cloud.restore(entry.walletId);
+    try {
+      await backups.cloud.delete(entry.walletId);
+    } on WalletCloudBackupException {
+      var confirmedDeleted = false;
+      try {
+        await backups.cloud.restore(entry.walletId);
+      } on BackupNotFoundException {
+        // A timeout occurred after the provider committed the deletion.
+        confirmedDeleted = true;
+      }
+      if (!confirmedDeleted) rethrow;
+    }
+    if (await _wallet(entry.walletId) != null) {
+      await (database.update(database.backupStatusRows)..where(
+            (t) =>
+                t.walletId.equals(entry.walletId) & t.scope.equals(_cloudScope),
+          ))
+          .write(const BackupStatusRowsCompanion(state: Value('none')));
+    }
+  }
 
   Future<void> restoreHd(RestorableWallet entry, String password) async {
     if (!entry.isRestorable) {
@@ -484,7 +566,8 @@ class WalletRepository {
     )..where((t) => t.walletId.equals(entry.walletId))).write(
       BackupStatusRowsCompanion(
         state: const Value('verified'),
-        lastVerifiedAt: Value(DateTime.now().toUtc()),
+        lastVerifiedAt: Value(entry.createdAt ?? entry.file.modifiedAt),
+        scope: Value(_cloudScope),
       ),
     );
   }

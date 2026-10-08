@@ -74,6 +74,7 @@ class StoredWallet {
     required this.kind,
     required this.state,
     required this.backupState,
+    this.lastBackedUpAt,
     required this.addresses,
   });
 
@@ -82,5 +83,6 @@ class StoredWallet {
   final WalletKind kind;
   final String state;
   final String backupState;
+  final DateTime? lastBackedUpAt;
   final List<StoredAddress> addresses;
 }

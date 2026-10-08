@@ -4,6 +4,8 @@ plugins {
     id("dev.flutter.flutter-gradle-plugin")
 }
 
+apply(plugin = "com.huawei.agconnect")
+
 android {
     namespace = "com.example.walletcloudbackup.wallet_cloud_backup_example"
     compileSdk = flutter.compileSdkVersion
@@ -19,7 +21,7 @@ android {
         applicationId = "com.example.walletcloudbackup.wallet_cloud_backup_example"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
-        minSdk = flutter.minSdkVersion
+        minSdk = 27 // huawei_drive requires Android API 27.
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
